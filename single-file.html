@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<!-- v1.4.1 -->
+<!-- v1.4.2 -->
 	
 <style>
  body {
@@ -158,6 +158,11 @@ label {color:#ffffff;font-weight:bold;}
 	top: 0;
 	left: 0;
   }
+  
+  #tempfilelabel {
+	
+	font-size: 10px;
+  }
 
 </style>
 </head>
@@ -178,7 +183,7 @@ label {color:#ffffff;font-weight:bold;}
 		<button onclick = "saveBlacklist()">Save</button>
 	</div>
 	
-	<p id = "version">v1.4.1</p>
+	<p id = "version">v1.4.2</p>
 
 	<div id = "topright">
 	<button id = "togglecovers">Hide Covers</button>
@@ -187,6 +192,9 @@ label {color:#ffffff;font-weight:bold;}
 	<button id="fakebtn">Import Data</button>
 
 	<button onclick = "loadFileBlacklist()">Manage Blacklist</button>
+	<label id = "tempfilelabel"> Temp. Save Files to Storage to Free Memory
+		<input id = "tempfile" type = "checkbox" checked onchange = "saveTempCheckbox()">
+	<label>
 	</div>
 
 
@@ -234,11 +242,32 @@ const coverDiv = document.getElementById("cover-container");
 
 const fileBlacklistDiv = document.getElementById("blacklist-div")
 
+const tempFileCheckbox = document.getElementById("tempfile");
+const tempFileCheckboxLabel = document.getElementById("tempfilelabel");
+
+
 var frameDB = false;
 
 var coversOn = true;
 
+var coverMap = new Map();
 
+var tempFilesAllowed = true;
+var defaultFiles = [];
+
+var tempCheckboxSave = localStorage.getItem("tempCheckbox");
+if (tempCheckboxSave){
+	tempCheckboxSave === "yes" ? tempFileCheckbox.checked = true : tempFileCheckbox.checked = false;
+}
+function saveTempCheckbox(){
+	if (tempFileCheckbox.checked){
+		localStorage.setItem("tempCheckbox", "yes");
+	}
+	else {
+		localStorage.setItem("tempCheckbox", "no");
+	}
+	
+}
  
 
 function loadAllExtZips(){
@@ -315,16 +344,47 @@ fileInput.addEventListener('change', async function(event) {
         
         const readPromises = Array.from(selectedFiles).map(file => {
             if (file.type === "text/html") {
-                return new Promise(resolve => {
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        const html = e.target.result;
-                        allHtmlFiles.push({ zip: html, name: file.name });
-                        resolve(); 
-                    };
-                    reader.readAsText(file);
-                });
-            } 
+
+    return new Promise(resolve => {
+
+        const reader = new FileReader();
+
+        reader.onload = function(e) {
+
+            const html = e.target.result;
+            const blob = new Blob([html], { type: "text/html" });
+
+			if (tempFileCheckbox.checked){
+            const tx = db.transaction("filesTemp", "readwrite");
+            const store = tx.objectStore("filesTemp");
+
+            store.put({
+                name: file.name,
+                data: blob,
+                type: blob.type
+            });
+			
+			}
+			
+			else {
+				defaultFiles.push({
+                name: file.name,
+                data: blob,
+                type: blob.type
+            });
+			
+			}
+
+            createButton(file.name);
+
+            resolve();
+        };
+
+        reader.readAsText(file);
+
+    });
+
+}
             
             else if (file.name.endsWith(".zip")) {
     
@@ -347,15 +407,14 @@ fileInput.addEventListener('change', async function(event) {
         await Promise.all(readPromises);
 
         console.log(readPromises);
-        renderHtmlButtons(true);
+         
 
     } else {
         console.log('No files selected.');
     }
 });
 
-let allHtmlFiles = [];
-var coverImages = {};
+ var coverImages = {};
 
 const dbName = "fastClassroomStoragee";
 const storeName = "files";
@@ -363,19 +422,39 @@ let db;
 
 var totalStorage = 0;
 
-const request = indexedDB.open(dbName, 1);
+const request = indexedDB.open(dbName, 2);
 request.onupgradeneeded = e => {
-  const db = e.target.result;
-  if (!db.objectStoreNames.contains(storeName)) {
-    db.createObjectStore(storeName, { keyPath: "name" });
-  }
+    const db = e.target.result;
+
+    if (!db.objectStoreNames.contains("filesTemp")) {
+        db.createObjectStore("filesTemp", { keyPath: "name" });
+    }
+
+    if (!db.objectStoreNames.contains("filesSaved")) {
+        db.createObjectStore("filesSaved", { keyPath: "name" });
+    }
 };
 request.onsuccess = e => {
-  db = e.target.result;
-  loadFiles()
+    db = e.target.result;
+
+    const tx = db.transaction("filesTemp", "readwrite");
+    tx.objectStore("filesTemp").clear();
+
+    loadFiles();
 };
 request.onerror = e => console.error("DB error:", e.target.error);
 
+window.addEventListener("beforeunload", () => {
+    if (!db) return;
+
+     const tx = db.transaction("filesTemp", "readwrite");
+    const store = tx.objectStore("filesTemp");
+
+     store.clear();
+
+    tx.oncomplete = () => console.log("Temp files cleared on tab close.");
+    tx.onerror = e => console.error("Error clearing temp files:", e.target.error);
+});
 
 var isHovering = false;
 
@@ -396,69 +475,78 @@ var loadedFileNames = [];
 
 var hasWarnedFileStorage = false;
 
-saveButton.addEventListener("click", async function() {
-    
-    saveButton.style.display = "none";
-    savedFileNames.push(hoveringFile);
+saveButton.onclick = function () {
 
-    var object = allHtmlFiles.find(obj => obj.name.includes(hoveringFile));
-    var content;
-    if (object.zip && typeof object.zip == "string"){
-        content = object.zip
-    }
-    else {
-        content = await object.async("string");
-    }
+    const tx = db.transaction(["filesTemp", "filesSaved"], "readwrite");
 
-    
-    const tx = db.transaction("files", "readwrite"); 
-    const store = tx.objectStore("files");
-    const blob = new Blob([content], { type: "text/html" }); 
-    const sizeInBytes = blob.size;
-    const sizeInMB = (sizeInBytes / (1024 * 1024)).toFixed(2);
+    const tempStore = tx.objectStore("filesTemp");
+    const savedStore = tx.objectStore("filesSaved");
 
-    store.put({ name: object.name, data: blob, type: blob.type });
+    const req = tempStore.get(hoveringFile);
 
-    tx.oncomplete = function(){
-        console.log("File saved:", object.name);
-        totalStorage += sizeInBytes;
-        var totalMB = (totalStorage / (1024 * 1024)).toFixed(2);
-        storageDiv.textContent = "Saved Storage: " + totalMB + " MB";
-        if (totalMB >= 1000 && !hasWarnedFileStorage){
-            alert("Your saved file storage is pretty large. Try to keep it under 1GB. You won't be able to access your saved files from different urls. Clearing your storage might not work if both this url and settings are unavaliable.")
-            hasWarnedFileStorage = true;
-        }
+    req.onsuccess = function () {
 
-
-
-        Array.from(divcontainer.children).forEach(obj => {
-            if (obj.id === object.name) {
-                obj.style.borderColor = "#000dc9";
-            }
-        });
-    };
-});
-deleteButton.addEventListener("click", async function() {
-    var currentHover = hoveringFile;
-    deleteButton.style.display = "none";
-    deletedFileNames.push(currentHover);
-    
-
-    const tx = db.transaction("files", "readwrite"); 
-    const store = tx.objectStore("files");
-
-    
-    store.delete(currentHover);
-
-    tx.oncomplete = function() {
-        console.log("File deleted:", currentHover);
+        let fileData = req.result;
 
         
-        Array.from(divcontainer.children).forEach(obj => {
-            if (obj.id === currentHover) {
-                obj.style.borderColor = ""; 
-            }
-        });
+        if (!fileData) {
+            fileData = defaultFiles.find(f => f.name === hoveringFile);
+            if (!fileData) return;
+        }
+
+        saveButton.style.display = "none";
+
+        savedStore.put(fileData);
+
+        totalStorage += fileData.data.size;
+
+        const totalMB = (totalStorage / (1024 * 1024)).toFixed(2);
+        storageDiv.textContent = "Saved Storage: " + totalMB + " MB";
+
+        console.log("Saved:", hoveringFile);
+
+        const btn = document.getElementById(hoveringFile);
+        if (btn) btn.style.borderColor = "#000dc9";
+
+    };
+
+};
+deleteButton.addEventListener("click", async function() {
+    if (!hoveringFile) return;
+
+    const currentHover = hoveringFile;
+    deleteButton.style.display = "none";
+    deletedFileNames.push(currentHover);
+
+   
+    const tx = db.transaction(["filesSaved", "filesTemp"], "readwrite");
+
+    const savedStore = tx.objectStore("filesSaved");
+    const tempStore = tx.objectStore("filesTemp");
+
+    
+    const reqSaved = savedStore.delete(currentHover);
+    reqSaved.onsuccess = () => {
+        console.log("File deleted from saved:", currentHover);
+
+        
+        const btn = document.getElementById(currentHover);
+        if (btn) btn.style.borderColor = "";
+    };
+
+    
+    const reqTemp = tempStore.delete(currentHover);
+    reqTemp.onsuccess = () => {
+        console.log("File deleted from temp:", currentHover);
+    };
+
+    tx.oncomplete = () => {
+         
+        const btn = document.getElementById(currentHover);
+        if (btn) btn.remove();
+        loadedFileNames = loadedFileNames.filter(f => f !== currentHover);
+        hoveringFile = null;
+		countDiv.textContent = "Loaded Content: " + divcontainer.children.length;
     };
 });
 
@@ -481,7 +569,7 @@ function initZipButtons() {
     f.push(r(covers))
 
 
-
+	tempFileCheckboxLabel.style.display = 'none';
     fileInputLabel.style.display = "none";
     f.forEach((x, idx) => {
         const zipBtn = document.createElement("button");
@@ -511,7 +599,7 @@ var progress = 0;
 async function loadZip(x, index, buttonEl) {
     buttonEl.remove();
 
-   
+   let zip = null;
     
     wait.textContent = x == r(covers) ? 'Loading Covers' : 'Loading ZIP ' + index;
     try {
@@ -519,57 +607,61 @@ async function loadZip(x, index, buttonEl) {
         if (!response.ok) throw new Error("Failed to fetch ZIP file " + x);
 		
         const blob = await response.blob();
-        const zip = await JSZip.loadAsync(blob);
+         zip = await JSZip.loadAsync(blob);
          
-        const htmlFiles = Object.keys(zip.files)
-            .filter(name => {
-                const lower = name.toLowerCase();
-                return (lower.endsWith(".html") || lower.endsWith(".htm")) && !fileBlackList.includes(name.split(".htm")[0]);
-            })
-             .map(name => {
-
-                // copying prototypes from zip var
-
-    const fileObj = zip.files[name];
-    
-     
-    const allProps = Object.getOwnPropertyNames(fileObj).reduce((acc, key) => {
-      acc[key] = fileObj[key];
-      return acc;
-    }, {});
-
-     
-    const proto = Object.getPrototypeOf(fileObj);
-    Object.getOwnPropertyNames(proto).forEach(key => {
-      if (!(key in allProps)) { 
-        allProps[key] = proto[key];
-      }
-    });
-
-     
-    allProps.name = name;
-
-    return allProps;
+        const htmlNames = Object.keys(zip.files)
+  .filter(name => {
+    const lower = name.toLowerCase();
+    return (lower.endsWith(".html") || lower.endsWith(".htm")) &&
+           !fileBlackList.includes(name.split(".htm")[0]);
   });
-        allHtmlFiles.push(...htmlFiles);
+
+for (const name of htmlNames) {
+
+    const file = zip.files[name];
+
+const fileBlob = await file.async("blob");
+
+    if (tempFileCheckbox.checked){
+    const tx = db.transaction("filesTemp", "readwrite");
+const store = tx.objectStore("filesTemp");
+
+    store.put({
+    name: name.split("/").pop(),
+    data: fileBlob,
+    type: fileBlob.type
+});
+
+}
+
+else {
+	defaultFiles.push({
+		name: name.split("/").pop(),
+		data: fileBlob,
+		type: fileBlob.type
+	})
+}
+
+    createButton(name.split("/").pop());
+}
 
        // console.log(allHtmlFiles)
-        
-        allHtmlFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+        				const splitByLastPeriod = str => str.split(/\.([^.]*)$/).filter(Boolean);
 
+ 
         if (x == r(covers)){
-            var blobUrl = URL.createObjectURL(blob);
-            var imageFiles = Object.keys(zip.files)
+             var imageFiles = Object.keys(zip.files)
        
             for (var fileName of imageFiles) {
                 var fileBlob = await zip.files[fileName].async("blob");
-                var blobUrl = URL.createObjectURL(fileBlob);
-                coverImages[fileName.slice(0, fileName.lastIndexOf(".")) || fileName] = blobUrl;
-                
-                var correct = document.getElementById(fileName.slice(0, fileName.lastIndexOf(".")) + ".htm") || document.getElementById(fileName.slice(0, fileName.lastIndexOf(".")) + ".html")
+                let blobUrl = URL.createObjectURL(fileBlob);
+coverMap.set(splitByLastPeriod(fileName.split("/").pop())[0], blobUrl); 
+
+
+var correct = document.getElementById(fileName.slice(0, fileName.lastIndexOf(".")) + ".htm") || document.getElementById(fileName.slice(0, fileName.lastIndexOf(".")) + ".html")
                 if (correct){
-                    var cover = coverImages[correct.id.slice(0, fileName.lastIndexOf(".")) || correct.id]
-                    correct.style.backgroundImage = "url(" + cover + ")";
+                   var cover = coverMap.get(correct.id.slice(0, fileName.lastIndexOf(".")) || correct.id);
+correct.style.backgroundImage = "url(" + cover + ")";
                 }
                 
             }
@@ -579,7 +671,7 @@ async function loadZip(x, index, buttonEl) {
         }
 
 
-        renderHtmlButtons();
+        
 		progress += 1;
 		if (progress >= f.length) {
 			wait.textContent = 'Done with everything.';
@@ -591,104 +683,112 @@ async function loadZip(x, index, buttonEl) {
         //alert("Error loading ZIP " + index + ". " + err);
         wait.textContent = 'Error. ' + err;
     }
+	
+	await zip.remove?.();
+	zip = null;
 }
 
-function renderHtmlButtons(inputWay) {
-    if (!inputWay){
-    document.querySelectorAll(".html-button").forEach(btn => {
-        if (!loadedFileNames.includes(btn.id)){
-        btn.remove()}});
+function createButton(fileName){
+
+    if (loadedFileNames.includes(fileName)) return;
+
+    const btn = document.createElement("button");
+
+    btn.textContent = fileName.split(".htm")[0];
+    btn.id = fileName;
+    btn.className = "button html-button";
+	
+	if (coverMap.has(fileName.split(".htm")[0])) {
+        btn.style.backgroundImage = "url(" + coverMap.get(fileName.split(".htm")[0]) + ")";
+        btn.style.backgroundSize = "cover";
+    }
+
+    divcontainer.appendChild(btn);
+
+    loadedFileNames.push(fileName);
+	
+		  if (!coversOn) hideCovers();
+
+	
+	btn.addEventListener("mouseenter", function(){
+
+    hoveringFile = fileName;
+
+    const tx = db.transaction("filesSaved","readonly");
+    const store = tx.objectStore("filesSaved");
+    const req = store.get(fileName);
+
+    req.onsuccess = function(){
+        if (!req.result){
+            saveButton.style.display = "block";
+            saveButton.style.position = "absolute";
+            saveButton.style.top = btn.offsetTop + "px";
+            saveButton.style.left = btn.offsetLeft + "px";
         }
-    allHtmlFiles.forEach(file => {
-        var trimmedName = file.name.split("/").pop()
-        if (!loadedFileNames.includes(trimmedName)){
-            const btn = document.createElement("button");
-            btn.textContent = trimmedName.includes(r("67616d65")) ? trimmedName.replaceAll(r("67616d65"), r("67232421")).split(".htm")[0] : trimmedName.split(".htm")[0];
-            btn.id = trimmedName;
-            var cover = coverImages[trimmedName.slice(0, trimmedName.lastIndexOf(".")) || trimmedName]
-            if (cover){
-                btn.style.backgroundImage = "url(" + cover + ")";
-            }
-            
-            btn.className = "button html-button";
-			
-			 
-            divcontainer.appendChild(btn);
-			if (!coversOn) hideCovers();
-			sortButtons()
-            loadedFileNames.push(trimmedName)
-
-            
-
-			btn.addEventListener("mouseenter", function() {
-			if (!savedFileNames.includes(trimmedName)) {
-				hoveringFile = trimmedName;
-
-				 
-				saveButton.style.display = "block";
-				saveButton.style.position = "absolute";
-				saveButton.style.top = btn.offsetTop + "px";
-				saveButton.style.left = btn.offsetLeft + "px";
-
-				 
-				
-			}
-			
-			if (!blacklistedFileNames.includes(trimmedName)){
-				hoveringFile = trimmedName;
+    };
+if (!blacklistedFileNames.includes(fileName)){
+				//hoveringFile = fileName;
 				blacklistButton.style.display = "block";
 				blacklistButton.style.position = "absolute";
 				blacklistButton.style.top = btn.offsetTop + "px";
 				 
 				blacklistButton.style.left = (btn.offsetLeft + btn.offsetWidth - blacklistButton.offsetWidth) + "px";
 			}
-		});
+});
 
-		btn.addEventListener("mouseleave", function() {
-			
-			 
-				if (!saveButton.matches(":hover") && !blacklistButton.matches(":hover")) {
-					hoveringFile = null;
-					saveButton.style.display = "none";
-					blacklistButton.style.display = "none";
-				}
-			  
-		});
+btn.addEventListener("mouseleave", function(){
+    if (!saveButton.matches(":hover") && !blacklistButton.matches(":hover")){
+        hoveringFile = null;
+        saveButton.style.display = "none";
+		blacklistButton.style.display = "none";
+    }
+});
 
-	 
+    btn.onclick = async function(){
 
+    let tx = db.transaction("filesSaved", "readonly");
+    let store = tx.objectStore("filesSaved");
+    let req = store.get(fileName);
 
+    req.onsuccess = function(){
 
-            btn.onclick = function(){
-                if (!frameDB){
-                    frameDB = true;
-                    openHtml(file, file.name);
-                }
-            
-            }
-            
-		
-        
-		
-        //optionsDiv.appendChild(btn);
+        if (req.result){
+            openHtml(req.result.data,false,fileName);
         }
-    });
-    countDiv.textContent = "Loaded Content: " + divcontainer.children.length;
+        else {
+		
+		    if (tempFileCheckbox.checked){
+
+            let tx2 = db.transaction("filesTemp", "readonly");
+            let store2 = tx2.objectStore("filesTemp");
+            let req2 = store2.get(fileName);
+
+            req2.onsuccess = function(){
+                openHtml(req2.result.data,false,fileName);
+            }
+			}
+			else {
+				const fileData = defaultFiles.find(f => f.name === fileName);
+				if (fileData){
+					openHtml(fileData.data, false, fileName)
+				}
+			}
+        }
+
+    };
+
+}
+countDiv.textContent = "Loaded Content: " + divcontainer.children.length;
+sortButtons();
 }
 
-async function openHtml(zip, fileName) {
-    var content;
-    if (zip instanceof Blob){
-        content = await zip.text();
-    }
-    else if (zip.zip && typeof zip.zip === "string"){
-        content = zip.zip;
-    }
-    else {
-        
-        content = await zip.async("string");
+ 
 
-    }
+async function openHtml(blob, tempBlob, fileName) {
+      const content = await blob.text();
+    
+	
+	 
 
     
     const elements = document.body.getElementsByTagName('*');
@@ -738,12 +838,19 @@ async function openHtml(zip, fileName) {
         backButton.remove();
         fullscreenButton.remove();
         for (let i = 0; i < elements.length; i++) {
-            if (elements[i].id === 'savebtn' || elements[i].id === 'blacklistbtn' || elements[i].id === 'deletebtn' || elements[i].id === 'fileInputLabel' || elements[i].id === 'importfile') {
+            if (elements[i].id === 'savebtn' || elements[i].id === 'blacklistbtn' || elements[i].id === 'deletebtn' || elements[i].id === 'importfile') {
                 continue; 
             }
-			else if (elements[i].id === 'loadallext' || elements[i].id === 'loadallint') {
-				document.getElementById("fast-loading").style.display = 'block';
+			else if (elements[i].id === 'fast-loading') {
+				document.getElementById("start-btn") ? document.getElementById("fast-loading").style.display = 'none' : document.getElementById("fast-loading").style.display = 'block';
+				continue; 
 			}
+			else if(elements[i].id === 'tempfilelabel'  || elements[i].id === 'fileInputLabel') {
+			
+				document.getElementById("start-btn") ? elements[i].style.display = '' : elements[i].style.display = 'none';
+				 continue; 
+			}
+			 
             elements[i].style.display = '';
         }
     };
@@ -753,8 +860,8 @@ startBtn.addEventListener("click", initZipButtons);
 
 
 function loadFiles() {
-  const tx = db.transaction("files", "readonly");
-  const store = tx.objectStore("files");
+  const tx = db.transaction("filesSaved", "readonly");
+const store = tx.objectStore("filesSaved");
   const req = store.getAll();
 
   req.onsuccess = e => {
@@ -797,7 +904,7 @@ function loadFiles() {
       button.onclick = function() {
         if (!frameDB){
             frameDB = true;
-            openHtml(f.data, f.name);
+            openHtml(f.data, false, f.name);
         }
         }
       countDiv.textContent = "Loaded Content: " + divcontainer.children.length;
@@ -876,6 +983,10 @@ function r(a) {
 document.getElementById("fakebtn").onclick = () => {
     document.getElementById("importfile").click();
 };
+
+
+
+
 
 
 async function saveData(){const e={};e.cookies=document.cookie,e.localStorage={...localStorage},e.sessionStorage={...sessionStorage},alert("Downloading...");const o=Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9YyqZ4QAAAAASUVORK5CYII="),(e=>e.charCodeAt(0))),t=(new TextEncoder).encode(JSON.stringify(e)),n=new Blob([o,t],{type:"image/png"}),a=document.createElement("a");a.href=URL.createObjectURL(n),a.download=`Lesson_v${Date.now()}.png`,document.body.appendChild(a),a.click(),document.body.removeChild(a)}document.getElementById("importfile").addEventListener("change",(async function(e){const o=e.target.files[0];if(!o)return;const t=new FileReader;t.onload=function(e){const o=new Uint8Array(e.target.result),t=[73,69,78,68,174,66,96,130];let n=-1;for(let e=0;e<o.length-t.length;e++){let a=!0;for(let n=0;n<t.length;n++)if(o[e+n]!==t[n]){a=!1;break}if(a){n=e+t.length;break}}if(-1===n)return void alert("Invalid PNG or no embedded data found");const a=o.slice(n),r=(new TextDecoder).decode(a);let c;try{c=JSON.parse(r)}catch(e){return void alert("Invalid embedded JSON")}if(c.cookies&&c.cookies.split(";").forEach((e=>{document.cookie=e.trim()})),c.localStorage){console.log("yay");for(const e in c.localStorage)localStorage.setItem(e,c.localStorage[e])}if(c.sessionStorage)for(const e in c.sessionStorage)sessionStorage.setItem(e,c.sessionStorage[e]);alert("Data loaded")},t.readAsArrayBuffer(o)}));
