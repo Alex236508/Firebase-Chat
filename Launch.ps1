@@ -1,16 +1,14 @@
 $port = 5500
 
-$scriptPath = $MyInvocation.InvocationName
-
-if ($PSCommandPath) {
-    $baseDir = Split-Path -Parent $PSCommandPath
-}
-elseif ($MyInvocation.MyCommand.Path) {
-    $baseDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if ($PSScriptRoot) {
+    $baseDir = $PSScriptRoot
 }
 else {
-    $baseDir = Split-Path -Parent $scriptPath
+
+    $baseDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 }
+
+Set-Location $baseDir
 
 Write-Host "Serving folder: $baseDir"
 
@@ -23,10 +21,10 @@ Start-Process "http://localhost:$port"
 function Get-ContentType($path) {
     switch -Regex ($path) {
         "\.html$" { "text/html; charset=utf-8" }
-        "\.css$" { "text/css; charset=utf-8" }
-        "\.js$" { "application/javascript; charset=utf-8" }
-        "\.ico$" { "image/x-icon" }
-        default { "text/plain; charset=utf-8" }
+        "\.css$"  { "text/css; charset=utf-8" }
+        "\.js$"   { "application/javascript; charset=utf-8" }
+        "\.ico$"  { "image/x-icon" }
+        default   { "text/plain; charset=utf-8" }
     }
 }
 
@@ -68,10 +66,10 @@ while ($true) {
         $type = Get-ContentType $filePath
 
         $header =
-        "HTTP/1.1 200 OK`r`n" +
-        "Content-Type: $type`r`n" +
-        "Content-Length: $($contentBytes.Length)`r`n" +
-        "Connection: close`r`n`r`n"
+            "HTTP/1.1 200 OK`r`n" +
+            "Content-Type: $type`r`n" +
+            "Content-Length: $($contentBytes.Length)`r`n" +
+            "Connection: close`r`n`r`n"
 
         $headerBytes = [System.Text.Encoding]::UTF8.GetBytes($header)
 
@@ -83,12 +81,12 @@ while ($true) {
         $msg = "404 Not Found: $path"
 
         $header =
-        "HTTP/1.1 404 Not Found`r`n" +
-        "Content-Type: text/plain; charset=utf-8`r`n`r`n"
+            "HTTP/1.1 404 Not Found`r`n" +
+            "Content-Type: text/plain; charset=utf-8`r`n`r`n"
 
-        $headerBytes = [System.Text.Encoding]::UTF8.GetBytes($header + $msg)
+        $responseBytes = [System.Text.Encoding]::UTF8.GetBytes($header + $msg)
 
-        $stream.Write($headerBytes, 0, $headerBytes.Length)
+        $stream.Write($responseBytes, 0, $responseBytes.Length)
     }
 
     $client.Close()
