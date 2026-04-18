@@ -1,4 +1,3 @@
-
 $scriptPath = $MyInvocation.MyCommand.Definition
 $baseDir = Split-Path -Parent $scriptPath
 
