@@ -1,14 +1,8 @@
 $port = 5500
 
-if ($PSScriptRoot) {
-    $baseDir = $PSScriptRoot
-}
-else {
-
-    $baseDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-}
-
-Set-Location $baseDir
+# Ensure we are always running from the script location
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+Set-Location $scriptDir
 
 Write-Host "Serving folder: $baseDir"
 
