@@ -1,25 +1,14 @@
-# =========================
-# FORCE SCRIPT DIRECTORY
-# =========================
 
-# Get absolute path of this script (MOST RELIABLE METHOD IN PS 5.1)
 $scriptPath = $MyInvocation.MyCommand.Definition
 $baseDir = Split-Path -Parent $scriptPath
 
-# Force working directory to script location
 [System.IO.Directory]::SetCurrentDirectory($baseDir)
 
 Write-Host "Serving folder: $baseDir"
 
-# =========================
-# CONFIG
-# =========================
 
 $port = 5500
 
-# =========================
-# START SERVER
-# =========================
 
 $listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Any, $port)
 $listener.Start()
@@ -27,9 +16,6 @@ $listener.Start()
 Write-Host "Server running at http://localhost:$port"
 Start-Process "http://localhost:$port"
 
-# =========================
-# MIME TYPES
-# =========================
 
 function Get-ContentType($path) {
     switch -Regex ($path) {
@@ -41,9 +27,6 @@ function Get-ContentType($path) {
     }
 }
 
-# =========================
-# MAIN LOOP
-# =========================
 
 while ($true) {
 
@@ -66,7 +49,6 @@ while ($true) {
         $path = $matches[1]
     }
 
-    # remove query string
     $path = $path.Split('?')[0]
 
     if ($path -eq "/") {
@@ -75,7 +57,6 @@ while ($true) {
 
     $relativePath = $path.TrimStart("/")
 
-    # ALWAYS resolve from script directory (no environment dependency)
     $filePath = [System.IO.Path]::Combine($baseDir, $relativePath)
 
     Write-Host "Request: $path -> $filePath"
