@@ -3,7 +3,6 @@ $baseDir = Split-Path -Parent $scriptPath
 
 [System.IO.Directory]::SetCurrentDirectory($baseDir)
 
-Write-Host "Serving folder: $baseDir"
 
 
 $port = 5500
@@ -12,7 +11,6 @@ $port = 5500
 $listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Any, $port)
 $listener.Start()
 
-Write-Host "Server running at http://localhost:$port"
 Start-Process "http://localhost:$port"
 
 
@@ -58,7 +56,6 @@ while ($true) {
 
     $filePath = [System.IO.Path]::Combine($baseDir, $relativePath)
 
-    Write-Host "Request: $path -> $filePath"
 
     if (Test-Path $filePath) {
 
