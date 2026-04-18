@@ -3,10 +3,7 @@ $baseDir = Split-Path -Parent $scriptPath
 
 [System.IO.Directory]::SetCurrentDirectory($baseDir)
 
-
-
 $port = 5500
-
 
 $listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Any, $port)
 $listener.Start()
