@@ -1,7 +1,3 @@
-# ==============================
-# CONFIG
-# ==============================
-
 $scriptPath = $MyInvocation.MyCommand.Definition
 $baseDir = Split-Path -Parent $scriptPath
 [System.IO.Directory]::SetCurrentDirectory($baseDir)
@@ -9,9 +5,6 @@ $baseDir = Split-Path -Parent $scriptPath
 $port = 5500
 
 
-# ==============================
-# 🎨 STARTUP BANNER (PUT ASCII HERE)
-# ==============================
 
 Clear-Host
 
@@ -26,46 +19,50 @@ $banner = @"
 (_______/(_______/|/     \|(_______)  |/    )_)(_______/   )_(   
 "@
 
-$colors = @(
-    "Cyan",
-    "Cyan",
-    "DarkCyan",
-    "Blue",
-    "Blue",
-    "DarkBlue",
-    "DarkBlue",
-    "Magenta"
-)
-
 $lines = $banner -split "`n"
 
-for ($i = 0; $i -lt $lines.Count; $i++) {
-    $color = $colors[$i % $colors.Count]
-    Write-Host $lines[$i] -ForegroundColor $color
-}
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+
+        $line = $lines[$i]
+
+        switch ($i) {
+            0 { Write-Host $line -ForegroundColor Cyan }
+            1 { Write-Host $line -ForegroundColor Cyan }
+            2 { Write-Host $line -ForegroundColor DarkCyan }
+            3 { Write-Host $line -ForegroundColor Green }
+            4 { Write-Host $line -ForegroundColor Green }
+            5 { Write-Host $line -ForegroundColor DarkGreen }
+            6 { Write-Host $line -ForegroundColor DarkGreen }
+            7 { Write-Host $line -ForegroundColor Cyan }
+            default { Write-Host $line -ForegroundColor DarkCyan }
+        }
+    }
 
 
 Write-Host "====================================" -ForegroundColor DarkGray
-Write-Host " Simple PowerShell Web Server" -ForegroundColor Green
+Write-Host " PowerShell Web Server" -ForegroundColor Green
 Write-Host " Port: $port" -ForegroundColor Green
 Write-Host " Root: $baseDir" -ForegroundColor Green
 Write-Host " URL : http://localhost:$port" -ForegroundColor Green
 Write-Host "====================================`n" -ForegroundColor DarkGray
 
 
-# ==============================
-# SERVER START
-# ==============================
 
 $listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Any, $port)
 $listener.Start()
 
+Write-Host ""
+Write-Host "====================================" -ForegroundColor DarkGray
+Write-Host "[ SYSTEM READY ]" -ForegroundColor Green
+Write-Host "Press ENTER to launch interface..." -ForegroundColor Cyan
+Write-Host "====================================" -ForegroundColor DarkGray
+Write-Host ""
+
+Read-Host | Out-Null
+
 Start-Process "http://localhost:$port"
 
 
-# ==============================
-# HELPERS
-# ==============================
 
 function Get-ContentType($path) {
     switch -Regex ($path) {
@@ -78,9 +75,6 @@ function Get-ContentType($path) {
 }
 
 
-# ==============================
-# MAIN LOOP
-# ==============================
 
 while ($true) {
 
@@ -97,9 +91,6 @@ while ($true) {
 
     $request = [System.Text.Encoding]::UTF8.GetString($buffer, 0, $bytesRead)
 
-    # ==========================
-    # 🧠 REQUEST PARSING
-    # ==========================
     $path = "/"
 
     if ($request -match "^GET\s+([^\s]+)") {
@@ -116,15 +107,9 @@ while ($true) {
     $filePath = [System.IO.Path]::Combine($baseDir, $relativePath)
 
 
-    # ==========================
-    # 📡 LOG REQUEST (OPTIONAL)
-    # ==========================
     Write-Host "[REQ] $path" -ForegroundColor Yellow
 
 
-    # ==========================
-    # 📦 RESPONSE HANDLING
-    # ==========================
 
     if (Test-Path $filePath) {
 
@@ -144,9 +129,6 @@ while ($true) {
     }
     else {
 
-        # ==========================
-        # ❌ 404 RESPONSE
-        # ==========================
 
         $msg = "404 Not Found: $path"
 
