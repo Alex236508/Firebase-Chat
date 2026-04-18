@@ -1,3 +1,3 @@
 @echo off
-cd /d "%~dp0"
-powershell -NoExit -ExecutionPolicy Bypass -File "launch.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0server.ps1"
+pause
