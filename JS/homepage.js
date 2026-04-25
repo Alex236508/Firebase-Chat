@@ -414,7 +414,7 @@ export function showHomepage({
       {
         id: "games",
         label: "Games",
-        hint: "Coming next",
+        hint: "300 Games and more coming soon",
         kicker: "Games",
         title: "Games hub",
         description:
